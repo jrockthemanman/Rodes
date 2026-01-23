@@ -57,3 +57,17 @@ const route = L.polyline(
 ).addTo(map);
 
 route.bindPopup("Fastest route (light-aware)").openPopup();
+// Create an info box
+const etaBox = L.control({ position: "topright" });
+
+etaBox.onAdd = function(map) {
+  const div = L.DomUtil.create("div", "eta-box");
+  div.innerHTML = "<b>Estimated Travel Time:</b><br>3 min 14 sec";
+  div.style.background = "white";
+  div.style.padding = "8px";
+  div.style.borderRadius = "6px";
+  div.style.boxShadow = "0 0 5px rgba(0,0,0,0.3)";
+  return div;
+};
+
+etaBox.addTo(map);
