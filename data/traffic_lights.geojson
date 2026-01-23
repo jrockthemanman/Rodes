@@ -3,26 +3,34 @@
   "features": [
     {
       "type": "Feature",
-      "properties": {},
+      "properties": { "name": "E Railroad St & S 1st St" },
       "geometry": {
         "type": "Point",
-        "coordinates": [-77.9659, 35.9742]
+        "coordinates": [-77.9667, 35.9729]
       }
     },
     {
       "type": "Feature",
-      "properties": {},
+      "properties": { "name": "E Green St & S 1st St" },
       "geometry": {
         "type": "Point",
-        "coordinates": [-77.9675, 35.9758]
+        "coordinates": [-77.9666, 35.9741]
       }
     },
     {
       "type": "Feature",
-      "properties": {},
+      "properties": { "name": "E Park Ave & S 1st St" },
       "geometry": {
         "type": "Point",
-        "coordinates": [-77.9638, 35.9735]
+        "coordinates": [-77.9665, 35.9755]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "E Washington St & S 1st St" },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [-77.9664, 35.9769]
       }
     }
   ]
