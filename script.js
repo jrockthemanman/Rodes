@@ -1,63 +1,42 @@
-// Create map with fake coordinates
-const map = L.map('map', {
-  crs: L.CRS.Simple
-});
+// Initialize map centered on Nashville, NC
+const map = L.map('map').setView([35.9746, -77.9656], 14);
 
-// Define map bounds
-const bounds = [[0,0], [100,100]];
-map.fitBounds(bounds);
+// OpenStreetMap tiles
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19,
+  attribution: '© OpenStreetMap contributors'
+}).addTo(map);
 
-// Draw fictional roads
-const roads = [
-  [[10, 10], [90, 10]],
-  [[10, 50], [90, 50]],
-  [[10, 90], [90, 90]],
-  [[50, 10], [50, 90]]
-];
+// Load traffic lights
+let trafficLights = [];
 
-roads.forEach(road => {
-  L.polyline(road, { color: 'gray', weight: 5 }).addTo(map);
-});
-const trafficLights = [
-  { coords: [50, 10], state: 'green' },
-  { coords: [50, 50], state: 'red' },
-  { coords: [50, 90], state: 'green' }
-];
+fetch('data/traffic_lights.geojson')
+  .then(res => res.json())
+  .then(data => {
+    L.geoJSON(data, {
+      pointToLayer: (feature, latlng) => {
+        const marker = L.circleMarker(latlng, {
+          radius: 6,
+          color: 'red',
+          fillColor: 'red',
+          fillOpacity: 1
+        });
 
-trafficLights.forEach(light => {
-  const color = light.state === 'green' ? 'green' : 'red';
-
-  L.circleMarker(light.coords, {
-    radius: 8,
-    color: color,
-    fillColor: color,
-    fillOpacity: 1
-  })
-  .bindPopup(`Traffic Light: ${light.state.toUpperCase()}`)
-  .addTo(map);
-});
-setInterval(() => {
-  map.eachLayer(layer => {
-    if (layer instanceof L.CircleMarker) {
-      const current = layer.options.color;
-      const next = current === 'red' ? 'green' : 'red';
-
-      layer.setStyle({
-        color: next,
-        fillColor: next
-      });
-    }
+        trafficLights.push(marker);
+        return marker;
+      }
+    }).addTo(map);
   });
-}, 3000);
-const fastRoute = L.polyline([[10,10],[50,10],[50,90],[90,90]], {
-  color: 'green',
-  weight: 4
-}).addTo(map);
 
-const slowRoute = L.polyline([[10,10],[10,90],[90,90]], {
-  color: 'red',
-  weight: 4,
-  dashArray: '5,5'
-}).addTo(map);
-fastRoute.bindPopup("Fastest route (fewer red lights)");
-slowRoute.bindPopup("Slower route (more red lights)");
+// Simulate traffic light changes
+setInterval(() => {
+  trafficLights.forEach(light => {
+    const isRed = light.options.color === 'red';
+    const next = isRed ? 'green' : 'red';
+
+    light.setStyle({
+      color: next,
+      fillColor: next
+    });
+  });
+}, 30000);
