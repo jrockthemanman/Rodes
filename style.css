@@ -1,11 +1,21 @@
 body {
+  margin: 0;
   font-family: Arial, sans-serif;
   text-align: center;
 }
 
+h2 {
+  margin-top: 10px;
+}
+
+p {
+  color: #555;
+}
+
 #map {
-  height: 500px;
-  width: 80%;
-  margin: auto;
+  height: 80vh;
+  width: 90%;
+  margin: 10px auto;
   border: 2px solid #ccc;
+  border-radius: 8px;
 }
