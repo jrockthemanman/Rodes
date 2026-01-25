@@ -2,22 +2,29 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Nashville NC Smart Routing Demo</title>
+  <title>Nashville NC Smart Navigation Demo</title>
 
   <link
     rel="stylesheet"
     href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
   />
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css"
+  />
+
   <link rel="stylesheet" href="style.css" />
 </head>
-
 <body>
-  <h2>🚦 Nashville, NC – Traffic-Aware Routing Demo</h2>
-  <p>Traffic lights change color every 30 seconds (simulated)</p>
 
-  <div id="map"></div>
+<h2>🚗 Smart Traffic Navigation — Nashville, NC</h2>
+<p>Route optimized with traffic-light awareness (simulated)</p>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="script.js"></script>
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+
+<script src="script.js"></script>
 </body>
 </html>
