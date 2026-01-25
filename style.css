@@ -8,14 +8,14 @@ h2 {
   margin-top: 10px;
 }
 
-p {
-  color: #555;
+#map {
+  height: 85vh;
+  width: 95%;
+  margin: 10px auto;
+  border-radius: 10px;
+  border: 2px solid #ccc;
 }
 
-#map {
-  height: 80vh;
-  width: 90%;
-  margin: 10px auto;
-  border: 2px solid #ccc;
-  border-radius: 8px;
+.leaflet-routing-container {
+  display: none; /* hide default routing UI */
 }
