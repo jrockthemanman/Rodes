@@ -136,3 +136,4 @@ function updateETA() {
      Red lights: +${delay}s<br>
      <b>Total: ${min}m ${sec}s</b>`;
 }
+
