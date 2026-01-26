@@ -1,12 +1,12 @@
-// ================= MAP SETUP =================
-const map = L.map("map", { tap: true }).setView([35.9705, -77.9625], 15);
+// ================= MAP =================
+const map = L.map("map").setView([35.7796, -78.6382], 13);
 
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19,
   attribution: "© OpenStreetMap contributors"
 }).addTo(map);
 
-// ================= ICONS =================
+// ================= ICON =================
 const carIcon = L.icon({
   iconUrl: "car.png",
   iconSize: [36, 36],
@@ -19,27 +19,28 @@ let startPoint, endPoint;
 let startMarker, endMarker, carMarker;
 let routingControl = null;
 let routes = [];
-let selectedRouteIndex = 0;
+let selectedRoute = 0;
 let trafficLights = [];
 
 // ================= ETA BOX =================
 const etaBox = L.control({ position: "topright" });
 etaBox.onAdd = () => {
   const div = L.DomUtil.create("div", "eta-box");
-  div.innerHTML = "<b>ETA</b><br>Tap start point";
+  div.innerHTML = "<b>ETA</b><br>Click start point";
   return div;
 };
 etaBox.addTo(map);
 
 // ================= TRAFFIC LIGHT CLASS =================
 class TrafficLight {
-  constructor(latlng) {
-    this.latlng = latlng;
+  constructor(lat, lng) {
+    this.lat = lat;
+    this.lng = lng;
     this.state = "red";
     this.timer = 30;
 
-    this.marker = L.circleMarker(latlng, {
-      radius: 6,
+    this.marker = L.circleMarker([lat, lng], {
+      radius: 4,
       color: "red",
       fillColor: "red",
       fillOpacity: 1
@@ -50,7 +51,7 @@ class TrafficLight {
     this.timer--;
     if (this.timer <= 0) {
       this.state = this.state === "red" ? "green" : "red";
-      this.timer = this.state === "red" ? 30 : 25;
+      this.timer = this.state === "red" ? 35 : 25;
       this.marker.setStyle({
         color: this.state,
         fillColor: this.state
@@ -59,19 +60,17 @@ class TrafficLight {
   }
 }
 
-// ================= LOAD LIGHTS =================
-fetch("data/traffic_lights.geojson")
-  .then(r => r.json())
+// ================= LOAD RALEIGH LIGHTS =================
+fetch("data/raleigh_traffic_lights.geojson")
+  .then(res => res.json())
   .then(data => {
     data.features.forEach(f => {
-      trafficLights.push(new TrafficLight([
-        f.geometry.coordinates[1],
-        f.geometry.coordinates[0]
-      ]));
+      const [lng, lat] = f.geometry.coordinates;
+      trafficLights.push(new TrafficLight(lat, lng));
     });
   });
 
-// ================= LIGHT TIMER =================
+// ================= SIGNAL TIMER =================
 setInterval(() => {
   trafficLights.forEach(l => l.tick());
   evaluateRoutes();
@@ -85,7 +84,7 @@ map.on("click", e => {
     reset();
     startPoint = e.latlng;
     startMarker = L.marker(startPoint).addTo(map).bindPopup("Start").openPopup();
-    etaBox.getContainer().innerHTML = "<b>ETA</b><br>Tap destination";
+    etaBox.getContainer().innerHTML = "<b>ETA</b><br>Click destination";
   }
 
   else if (clickStage === 2) {
@@ -97,7 +96,7 @@ map.on("click", e => {
   else {
     clickStage = 0;
     reset();
-    etaBox.getContainer().innerHTML = "<b>ETA</b><br>Tap start point";
+    etaBox.getContainer().innerHTML = "<b>ETA</b><br>Click start point";
   }
 });
 
@@ -130,7 +129,7 @@ function buildRoutes() {
 
 // ================= ROUTE SELECTION =================
 function selectRoute(index) {
-  selectedRouteIndex = index;
+  selectedRoute = index;
   animateCar(routes[index]);
 }
 
@@ -139,8 +138,8 @@ function animateCar(route) {
   if (carMarker) map.removeLayer(carMarker);
 
   carMarker = L.marker(route.coordinates[0], { icon: carIcon }).addTo(map);
-  let i = 0;
 
+  let i = 0;
   const move = setInterval(() => {
     if (i >= route.coordinates.length) {
       clearInterval(move);
@@ -151,33 +150,33 @@ function animateCar(route) {
   }, 120);
 }
 
-// ================= ETA + REROUTING =================
+// ================= ETA EVALUATION =================
 function evaluateRoutes() {
   if (!routes.length) return;
 
-  let fastestIndex = 0;
-  let fastestTime = Infinity;
   let html = "<b>Routes</b><br>";
+  let bestIndex = 0;
+  let bestTime = Infinity;
 
   routes.forEach((route, i) => {
     const base = route.summary.totalTime;
     const delay = signalDelay(route);
     const total = base + delay;
 
-    if (total < fastestTime) {
-      fastestTime = total;
-      fastestIndex = i;
+    if (total < bestTime) {
+      bestTime = total;
+      bestIndex = i;
     }
 
-    const m = Math.floor(total / 60);
-    const s = Math.floor(total % 60);
+    const min = Math.floor(total / 60);
+    const sec = Math.floor(total % 60);
 
-    html += `${i === selectedRouteIndex ? "🟢" : "⚪"} Route ${i + 1}: ${m}m ${s}s<br>`;
+    html += `${i === selectedRoute ? "🟢" : "⚪"} Route ${i + 1}: ${min}m ${sec}s<br>`;
   });
 
-  if (fastestIndex !== selectedRouteIndex) {
-    html += "<i>Rerouting…</i><br>";
-    selectRoute(fastestIndex);
+  if (bestIndex !== selectedRoute) {
+    html += "<i>Rerouting…</i>";
+    selectRoute(bestIndex);
   }
 
   etaBox.getContainer().innerHTML = html;
@@ -186,16 +185,16 @@ function evaluateRoutes() {
 // ================= SIGNAL DELAY =================
 function signalDelay(route) {
   let delay = 0;
+  const threshold = 0.00025;
 
   trafficLights.forEach(light => {
     if (light.state !== "red") return;
 
-    route.coordinates.some((pt, i) => {
-      const dLat = pt.lat - light.latlng[0];
-      const dLng = pt.lng - light.latlng[1];
-      if (Math.sqrt(dLat * dLat + dLng * dLng) < 0.00025) {
+    route.coordinates.some(pt => {
+      const dLat = pt.lat - light.lat;
+      const dLng = pt.lng - light.lng;
+      if (Math.sqrt(dLat*dLat + dLng*dLng) < threshold) {
         delay += light.timer;
-        if (isLeftTurn(route, i)) delay += 10;
         return true;
       }
     });
@@ -204,27 +203,11 @@ function signalDelay(route) {
   return delay;
 }
 
-// ================= LEFT TURN CHECK =================
-function isLeftTurn(route, i) {
-  if (i < 2 || i > route.coordinates.length - 2) return false;
-
-  const a = route.coordinates[i - 1];
-  const b = route.coordinates[i];
-  const c = route.coordinates[i + 1];
-
-  const cross =
-    (b.lat - a.lat) * (c.lng - b.lng) -
-    (b.lng - a.lng) * (c.lat - b.lat);
-
-  return cross > 0;
-}
-
 // ================= RESET =================
 function reset() {
   if (routingControl) map.removeControl(routingControl);
   if (startMarker) map.removeLayer(startMarker);
   if (endMarker) map.removeLayer(endMarker);
   if (carMarker) map.removeLayer(carMarker);
-
   routes = [];
 }
