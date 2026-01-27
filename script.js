@@ -1,4 +1,4 @@
-// ================= MAP =================
+// ===================== MAP =====================
 const map = L.map("map").setView([35.7796, -78.6382], 12);
 
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -6,28 +6,31 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   attribution: "© OpenStreetMap contributors"
 }).addTo(map);
 
-// ================= STATE =================
-let startPoint = null;
-let endPoint = null;
+// ===================== GLOBAL STATE =====================
 let clickCount = 0;
+let startLatLng = null;
+let endLatLng = null;
 let routingControl = null;
 let carMarker = null;
 let trafficLights = [];
+let visibleLights = [];
 
-// ================= ICON =================
+// ===================== ICON =====================
 const carIcon = L.icon({
-  iconUrl: "https://cdn-icons-png.flaticon.com/512/744/744465.png",
+  iconUrl: "https://cdn-icons-png.flaticon.com/512/3097/3097144.png",
   iconSize: [32, 32],
   iconAnchor: [16, 16]
 });
 
-// ================= LIGHT MODEL =================
+// ===================== TRAFFIC LIGHT MODEL =====================
 class TrafficLight {
   constructor(lat, lng) {
     this.lat = lat;
     this.lng = lng;
-    this.cycle = 70 + Math.random() * 30;
-    this.green = this.cycle * 0.5;
+
+    // Fictitious but realistic signal
+    this.cycle = 60 + Math.random() * 30; // 60–90s
+    this.green = this.cycle * 0.55;
     this.offset = Math.random() * this.cycle;
 
     this.marker = L.circleMarker([lat, lng], {
@@ -55,68 +58,71 @@ class TrafficLight {
   }
 
   hide() {
-    if (map.hasLayer(this.marker)) map.removeLayer(this.marker);
+    if (map.hasLayer(this.marker)) {
+      map.removeLayer(this.marker);
+    }
   }
 }
 
-// ================= LOAD LIGHTS =================
+// ===================== LOAD LIGHTS =====================
 fetch("./data/raleigh_traffic_lights.geojson")
-  .then(r => r.json())
+  .then(res => res.json())
   .then(data => {
     L.geoJSON(data, {
       pointToLayer: (_, latlng) => {
         trafficLights.push(new TrafficLight(latlng.lat, latlng.lng));
       }
     });
-    console.log("Loaded lights:", trafficLights.length);
-  });
+    console.log("Traffic lights loaded:", trafficLights.length);
+  })
+  .catch(err => console.error("Light load error", err));
 
-// ================= CLICK HANDLER =================
+// ===================== MAP CLICK =====================
 map.on("click", e => {
   clickCount++;
 
   if (clickCount === 1) {
     reset();
-    startPoint = e.latlng;
-    L.marker(startPoint).addTo(map).bindPopup("Start").openPopup();
+    startLatLng = e.latlng;
+    L.marker(startLatLng).addTo(map).bindPopup("Start").openPopup();
   }
 
   if (clickCount === 2) {
-    endPoint = e.latlng;
-    L.marker(endPoint).addTo(map).bindPopup("End").openPopup();
+    endLatLng = e.latlng;
+    L.marker(endLatLng).addTo(map).bindPopup("End").openPopup();
     buildRoute();
     clickCount = 0;
   }
 });
 
-// ================= ROUTING =================
+// ===================== ROUTING =====================
 function buildRoute() {
   routingControl = L.Routing.control({
-    waypoints: [startPoint, endPoint],
+    waypoints: [startLatLng, endLatLng],
     router: L.Routing.osrmv1({
       serviceUrl: "https://router.project-osrm.org/route/v1",
       alternatives: true
     }),
     showAlternatives: true,
+    addWaypoints: false,
     lineOptions: {
       styles: [
         { color: "blue", weight: 10, opacity: 0.9 },
-        { color: "#999", weight: 4, opacity: 0.5 }
+        { color: "#999", weight: 4, opacity: 0.6 }
       ]
-    },
-    addWaypoints: false
+    }
   }).addTo(map);
 
   routingControl.on("routesfound", e => {
-    const fastest = pickFastestRoute(e.routes);
-    routingControl._selectRoute(fastest.index);
-    displayRouteEffects(fastest.route);
+    const best = chooseFastestRoute(e.routes);
+    routingControl._selectRoute(best.index);
+    renderRoute(best.route);
   });
 }
 
-// ================= FASTEST ROUTE LOGIC =================
-function pickFastestRoute(routes) {
-  let best = { time: Infinity, route: null, index: 0 };
+// ===================== ROUTE SCORING =====================
+function chooseFastestRoute(routes) {
+  let best = { index: 0, route: routes[0], time: Infinity };
 
   routes.forEach((route, i) => {
     let time = route.summary.totalTime;
@@ -124,48 +130,56 @@ function pickFastestRoute(routes) {
 
     route.coordinates.forEach(pt => {
       trafficLights.forEach(light => {
-        const d =
-          Math.hypot(pt.lat - light.lat, pt.lng - light.lng);
-        if (d < 0.0004) time += light.delayAt(now);
+        if (distance(pt, light) < 0.0004) {
+          time += light.delayAt(now);
+        }
       });
     });
 
     if (time < best.time) {
-      best = { time, route, index: i };
+      best = { index: i, route, time };
     }
   });
 
   return best;
 }
 
-// ================= DISPLAY =================
-function displayRouteEffects(route) {
-  trafficLights.forEach(l => l.hide());
+// ===================== RENDER =====================
+function renderRoute(route) {
+  visibleLights.forEach(l => l.hide());
+  visibleLights = [];
 
+  let delay = 0;
   const now = Date.now() / 1000;
-  let totalDelay = 0;
 
   route.coordinates.forEach(pt => {
     trafficLights.forEach(light => {
-      if (Math.hypot(pt.lat - light.lat, pt.lng - light.lng) < 0.0004) {
+      if (distance(pt, light) < 0.0004) {
         const state = light.stateAt(now);
         light.show(state);
-        totalDelay += light.delayAt(now);
+        visibleLights.push(light);
+        delay += light.delayAt(now);
       }
     });
   });
 
-  const eta = route.summary.totalTime + totalDelay;
-  document.getElementById("etaText").innerText =
-    `ETA: ${(eta / 60).toFixed(1)} min`;
+  const eta = route.summary.totalTime + delay;
+  document.getElementById("etaValue").innerText =
+    `${(eta / 60).toFixed(1)} minutes`;
 
   if (carMarker) map.removeLayer(carMarker);
   carMarker = L.marker(route.coordinates[0], { icon: carIcon }).addTo(map);
 }
 
-// ================= RESET =================
+// ===================== HELPERS =====================
+function distance(pt, light) {
+  return Math.hypot(pt.lat - light.lat, pt.lng - light.lng);
+}
+
+// ===================== RESET =====================
 function reset() {
   if (routingControl) map.removeControl(routingControl);
-  trafficLights.forEach(l => l.hide());
+  visibleLights.forEach(l => l.hide());
+  visibleLights = [];
   if (carMarker) map.removeLayer(carMarker);
 }
