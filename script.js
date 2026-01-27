@@ -14,7 +14,7 @@ let routingControl = null;
 let routes = [];
 let visibleLights = [];
 
-// ===================== TRAFFIC LIGHT STORAGE (HIDDEN) =====================
+// ===================== TRAFFIC LIGHT STORAGE =====================
 const allTrafficLights = [];
 
 // ===================== TRAFFIC LIGHT CLASS =====================
@@ -25,7 +25,6 @@ class TrafficLight {
     this.state = Math.random() > 0.5 ? "red" : "green";
     this.timer = this.state === "red" ? rand(20, 40) : rand(15, 30);
 
-    // Marker is CREATED but NOT added yet
     this.marker = L.circleMarker([lat, lng], {
       radius: 6,
       color: this.state,
@@ -35,6 +34,11 @@ class TrafficLight {
   }
 
   show() {
+    this.marker.setStyle({
+      color: this.state,
+      fillColor: this.state
+    });
+
     if (!map.hasLayer(this.marker)) {
       this.marker.addTo(map);
     }
@@ -115,41 +119,43 @@ function buildRoute() {
   routingControl = L.Routing.control({
     waypoints: [startPoint, endPoint],
     router: L.Routing.osrmv1({
-      serviceUrl: "https://router.project-osrm.org/route/v1",
+      serviceUrl: "https://router.project-osrm.org/route/v1/driving",
       alternatives: true
     }),
-
-    // 🔴 VERY VISIBLE ROUTE STYLE
     lineOptions: {
       styles: [
-        { color: "red", weight: 10, opacity: 0.9 },     // primary
-        { color: "#777", weight: 4, opacity: 0.6 }      // alternates
+        { color: "red", weight: 10, opacity: 0.9 },
+        { color: "#777", weight: 4, opacity: 0.6 }
       ]
     },
-
     showAlternatives: true,
     addWaypoints: false,
     draggableWaypoints: false,
     fitSelectedRoutes: true
   }).addTo(map);
 
+  // 🔑 FORCE ROUTE TO APPEAR IMMEDIATELY
+  setTimeout(() => map.invalidateSize(true), 0);
+
   routingControl.on("routesfound", e => {
     routes = e.routes;
     showLightsForRoute(routes[0]);
+    updateETA(routes[0]);
   });
 
   routingControl.on("routeselected", e => {
     showLightsForRoute(routes[e.routeIndex]);
+    updateETA(routes[e.routeIndex]);
   });
 }
 
 // ===================== ROUTE-BASED LIGHT VISIBILITY =====================
 function showLightsForRoute(route) {
-  // Hide previous lights
   visibleLights.forEach(l => l.hide());
   visibleLights = [];
 
-  const threshold = 0.0004; // ~40 meters
+  const threshold = 0.0004;
+  const now = Date.now() / 1000;
 
   allTrafficLights.forEach(light => {
     const near = route.coordinates.some(pt => {
@@ -169,14 +175,9 @@ function showLightsForRoute(route) {
   console.log("Visible route lights:", visibleLights.length);
 }
 
-// ===================== RESET =====================
-function resetAll() {
-  if (routingControl) map.removeControl(routingControl);
-  if (startMarker) map.removeLayer(startMarker);
-  if (endMarker) map.removeLayer(endMarker);
+// ===================== ETA =====================
+function updateETA(route) {
+  let eta = route.summary.totalTime;
 
-  visibleLights.forEach(l => l.hide());
-  visibleLights = [];
-
-  routes = [];
-}
+  // add expected red-light delay
+  visibleLights.forEach(light
