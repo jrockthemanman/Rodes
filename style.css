@@ -8,22 +8,21 @@ html, body {
   width: 100%;
 }
 
-/* ETA BOX */
 #etaBox {
   position: absolute;
   top: 15px;
   right: 15px;
   background: white;
   padding: 12px 16px;
-  border-radius: 10px;
+  border-radius: 8px;
   font-family: Arial, sans-serif;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  box-shadow: 0 3px 10px rgba(0,0,0,0.3);
   z-index: 1000;
 }
 
 #etaTitle {
-  font-size: 14px;
   font-weight: bold;
+  font-size: 14px;
 }
 
 #etaValue {
