@@ -1,57 +1,62 @@
-// ================= MAP =================
-const map = L.map("map").setView([35.7796, -78.6382], 13);
+// ===================== MAP =====================
+const map = L.map("map").setView([35.7796, -78.6382], 12);
 
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19,
   attribution: "© OpenStreetMap contributors"
 }).addTo(map);
 
-// ================= ICON =================
-const carIcon = L.icon({
-  iconUrl: "car.png",
-  iconSize: [36, 36],
-  iconAnchor: [18, 18]
-});
-
-// ================= STATE =================
+// ===================== STATE =====================
 let clickStage = 0;
 let startPoint, endPoint;
-let startMarker, endMarker, carMarker;
+let startMarker, endMarker;
 let routingControl = null;
 let routes = [];
-let selectedRoute = 0;
-let trafficLights = [];
+let visibleLights = [];
 
-// ================= ETA BOX =================
-const etaBox = L.control({ position: "topright" });
-etaBox.onAdd = () => {
-  const div = L.DomUtil.create("div", "eta-box");
-  div.innerHTML = "<b>ETA</b><br>Click start point";
-  return div;
-};
-etaBox.addTo(map);
+// ===================== TRAFFIC LIGHT STORAGE (HIDDEN) =====================
+const allTrafficLights = [];
 
-// ================= TRAFFIC LIGHT CLASS =================
+// ===================== TRAFFIC LIGHT CLASS =====================
 class TrafficLight {
   constructor(lat, lng) {
     this.lat = lat;
     this.lng = lng;
-    this.state = "red";
-    this.timer = 30;
+    this.state = Math.random() > 0.5 ? "red" : "green";
+    this.timer = this.state === "red" ? rand(20, 40) : rand(15, 30);
 
+    // Marker is CREATED but NOT added yet
     this.marker = L.circleMarker([lat, lng], {
-      radius: 4,
-      color: "red",
-      fillColor: "red",
+      radius: 6,
+      color: this.state,
+      fillColor: this.state,
       fillOpacity: 1
-    }).addTo(map);
+    });
+  }
+
+  show() {
+    if (!map.hasLayer(this.marker)) {
+      this.marker.addTo(map);
+    }
+  }
+
+  hide() {
+    if (map.hasLayer(this.marker)) {
+      map.removeLayer(this.marker);
+    }
   }
 
   tick() {
     this.timer--;
     if (this.timer <= 0) {
-      this.state = this.state === "red" ? "green" : "red";
-      this.timer = this.state === "red" ? 35 : 25;
+      if (this.state === "red") {
+        this.state = "green";
+        this.timer = rand(15, 30);
+      } else {
+        this.state = "red";
+        this.timer = rand(20, 40);
+      }
+
       this.marker.setStyle({
         color: this.state,
         fillColor: this.state
@@ -60,48 +65,51 @@ class TrafficLight {
   }
 }
 
-// ================= LOAD RALEIGH LIGHTS =================
-fetch("data/raleigh_traffic_lights.geojson")
+function rand(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+// ===================== LOAD RALEIGH LIGHTS =====================
+fetch("./data/raleigh_traffic_lights.geojson")
   .then(res => res.json())
   .then(data => {
-    data.features.forEach(f => {
-      const [lng, lat] = f.geometry.coordinates;
-      trafficLights.push(new TrafficLight(lat, lng));
+    L.geoJSON(data, {
+      pointToLayer: (_, latlng) => {
+        allTrafficLights.push(new TrafficLight(latlng.lat, latlng.lng));
+      }
     });
+    console.log("Loaded traffic lights:", allTrafficLights.length);
   });
 
-// ================= SIGNAL TIMER =================
+// ===================== SIGNAL ENGINE =====================
 setInterval(() => {
-  trafficLights.forEach(l => l.tick());
-  evaluateRoutes();
+  visibleLights.forEach(l => l.tick());
 }, 1000);
 
-// ================= CLICK HANDLING =================
+// ===================== CLICK HANDLING =====================
 map.on("click", e => {
   clickStage++;
 
   if (clickStage === 1) {
-    reset();
+    resetAll();
     startPoint = e.latlng;
     startMarker = L.marker(startPoint).addTo(map).bindPopup("Start").openPopup();
-    etaBox.getContainer().innerHTML = "<b>ETA</b><br>Click destination";
   }
 
   else if (clickStage === 2) {
     endPoint = e.latlng;
     endMarker = L.marker(endPoint).addTo(map).bindPopup("Destination").openPopup();
-    buildRoutes();
+    buildRoute();
   }
 
   else {
     clickStage = 0;
-    reset();
-    etaBox.getContainer().innerHTML = "<b>ETA</b><br>Click start point";
+    resetAll();
   }
 });
 
-// ================= ROUTING =================
-function buildRoutes() {
+// ===================== ROUTING =====================
+function buildRoute() {
   if (routingControl) map.removeControl(routingControl);
 
   routingControl = L.Routing.control({
@@ -110,6 +118,15 @@ function buildRoutes() {
       serviceUrl: "https://router.project-osrm.org/route/v1",
       alternatives: true
     }),
+
+    // 🔴 VERY VISIBLE ROUTE STYLE
+    lineOptions: {
+      styles: [
+        { color: "red", weight: 10, opacity: 0.9 },     // primary
+        { color: "#777", weight: 4, opacity: 0.6 }      // alternates
+      ]
+    },
+
     showAlternatives: true,
     addWaypoints: false,
     draggableWaypoints: false,
@@ -118,96 +135,48 @@ function buildRoutes() {
 
   routingControl.on("routesfound", e => {
     routes = e.routes;
-    selectRoute(0);
-    evaluateRoutes();
+    showLightsForRoute(routes[0]);
   });
 
   routingControl.on("routeselected", e => {
-    selectRoute(e.routeIndex);
+    showLightsForRoute(routes[e.routeIndex]);
   });
 }
 
-// ================= ROUTE SELECTION =================
-function selectRoute(index) {
-  selectedRoute = index;
-  animateCar(routes[index]);
-}
+// ===================== ROUTE-BASED LIGHT VISIBILITY =====================
+function showLightsForRoute(route) {
+  // Hide previous lights
+  visibleLights.forEach(l => l.hide());
+  visibleLights = [];
 
-// ================= CAR ANIMATION =================
-function animateCar(route) {
-  if (carMarker) map.removeLayer(carMarker);
+  const threshold = 0.0004; // ~40 meters
 
-  carMarker = L.marker(route.coordinates[0], { icon: carIcon }).addTo(map);
-
-  let i = 0;
-  const move = setInterval(() => {
-    if (i >= route.coordinates.length) {
-      clearInterval(move);
-      return;
-    }
-    carMarker.setLatLng(route.coordinates[i]);
-    i++;
-  }, 120);
-}
-
-// ================= ETA EVALUATION =================
-function evaluateRoutes() {
-  if (!routes.length) return;
-
-  let html = "<b>Routes</b><br>";
-  let bestIndex = 0;
-  let bestTime = Infinity;
-
-  routes.forEach((route, i) => {
-    const base = route.summary.totalTime;
-    const delay = signalDelay(route);
-    const total = base + delay;
-
-    if (total < bestTime) {
-      bestTime = total;
-      bestIndex = i;
-    }
-
-    const min = Math.floor(total / 60);
-    const sec = Math.floor(total % 60);
-
-    html += `${i === selectedRoute ? "🟢" : "⚪"} Route ${i + 1}: ${min}m ${sec}s<br>`;
-  });
-
-  if (bestIndex !== selectedRoute) {
-    html += "<i>Rerouting…</i>";
-    selectRoute(bestIndex);
-  }
-
-  etaBox.getContainer().innerHTML = html;
-}
-
-// ================= SIGNAL DELAY =================
-function signalDelay(route) {
-  let delay = 0;
-  const threshold = 0.00025;
-
-  trafficLights.forEach(light => {
-    if (light.state !== "red") return;
-
-    route.coordinates.some(pt => {
+  allTrafficLights.forEach(light => {
+    const near = route.coordinates.some(pt => {
       const dLat = pt.lat - light.lat;
       const dLng = pt.lng - light.lng;
-      if (Math.sqrt(dLat*dLat + dLng*dLng) < threshold) {
-        delay += light.timer;
-        return true;
-      }
+      return Math.sqrt(dLat * dLat + dLng * dLng) < threshold;
     });
+
+    if (near) {
+      light.show();
+      visibleLights.push(light);
+    } else {
+      light.hide();
+    }
   });
 
-  return delay;
+  console.log("Visible route lights:", visibleLights.length);
 }
 
-// ================= RESET =================
-function reset() {
+// ===================== RESET =====================
+function resetAll() {
   if (routingControl) map.removeControl(routingControl);
   if (startMarker) map.removeLayer(startMarker);
   if (endMarker) map.removeLayer(endMarker);
-  if (carMarker) map.removeLayer(carMarker);
+
+  visibleLights.forEach(l => l.hide());
+  visibleLights = [];
+
   routes = [];
 }
