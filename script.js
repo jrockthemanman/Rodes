@@ -11,13 +11,15 @@ let clickStage = 0;
 let startPoint, endPoint;
 let startMarker, endMarker;
 let routingControl = null;
-let routes = [];
 let visibleLights = [];
-
-// ===================== TRAFFIC LIGHT STORAGE =====================
 const allTrafficLights = [];
 
-// ===================== TRAFFIC LIGHT CLASS =====================
+// ===================== UTILS =====================
+function rand(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+// ===================== TRAFFIC LIGHT =====================
 class TrafficLight {
   constructor(lat, lng) {
     this.lat = lat;
@@ -38,29 +40,18 @@ class TrafficLight {
       color: this.state,
       fillColor: this.state
     });
-
-    if (!map.hasLayer(this.marker)) {
-      this.marker.addTo(map);
-    }
+    if (!map.hasLayer(this.marker)) this.marker.addTo(map);
   }
 
   hide() {
-    if (map.hasLayer(this.marker)) {
-      map.removeLayer(this.marker);
-    }
+    if (map.hasLayer(this.marker)) map.removeLayer(this.marker);
   }
 
   tick() {
     this.timer--;
     if (this.timer <= 0) {
-      if (this.state === "red") {
-        this.state = "green";
-        this.timer = rand(15, 30);
-      } else {
-        this.state = "red";
-        this.timer = rand(20, 40);
-      }
-
+      this.state = this.state === "red" ? "green" : "red";
+      this.timer = this.state === "red" ? rand(20, 40) : rand(15, 30);
       this.marker.setStyle({
         color: this.state,
         fillColor: this.state
@@ -69,46 +60,36 @@ class TrafficLight {
   }
 }
 
-function rand(min, max) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-// ===================== LOAD RALEIGH LIGHTS =====================
+// ===================== LOAD LIGHTS =====================
 fetch("./data/raleigh_traffic_lights.geojson")
-  .then(res => res.json())
+  .then(r => r.json())
   .then(data => {
     L.geoJSON(data, {
       pointToLayer: (_, latlng) => {
         allTrafficLights.push(new TrafficLight(latlng.lat, latlng.lng));
       }
     });
-    console.log("Loaded traffic lights:", allTrafficLights.length);
+    console.log("Traffic lights loaded:", allTrafficLights.length);
   });
 
-// ===================== SIGNAL ENGINE =====================
+// ===================== LIGHT ENGINE =====================
 setInterval(() => {
   visibleLights.forEach(l => l.tick());
 }, 1000);
 
 // ===================== CLICK HANDLING =====================
 map.on("click", e => {
-  clickStage++;
-
-  if (clickStage === 1) {
+  if (clickStage === 0) {
     resetAll();
     startPoint = e.latlng;
     startMarker = L.marker(startPoint).addTo(map).bindPopup("Start").openPopup();
+    clickStage = 1;
   }
-
-  else if (clickStage === 2) {
+  else if (clickStage === 1) {
     endPoint = e.latlng;
     endMarker = L.marker(endPoint).addTo(map).bindPopup("Destination").openPopup();
     buildRoute();
-  }
-
-  else {
     clickStage = 0;
-    resetAll();
   }
 });
 
@@ -123,39 +104,37 @@ function buildRoute() {
       alternatives: true
     }),
     lineOptions: {
-      styles: [
-        { color: "red", weight: 10, opacity: 0.9 },
-        { color: "#777", weight: 4, opacity: 0.6 }
-      ]
+      styles: [{ color: "blue", weight: 10, opacity: 0.9 }]
     },
-    showAlternatives: true,
     addWaypoints: false,
     draggableWaypoints: false,
-    fitSelectedRoutes: true
+    fitSelectedRoutes: true,
+    showAlternatives: true
   }).addTo(map);
 
-  // 🔑 FORCE ROUTE TO APPEAR IMMEDIATELY
-  setTimeout(() => map.invalidateSize(true), 0);
+  setTimeout(() => map.invalidateSize(), 50);
 
   routingControl.on("routesfound", e => {
-    routes = e.routes;
-    showLightsForRoute(routes[0]);
-    updateETA(routes[0]);
+    handleRoute(e.routes[0]);
   });
 
   routingControl.on("routeselected", e => {
-    showLightsForRoute(routes[e.routeIndex]);
-    updateETA(routes[e.routeIndex]);
+    handleRoute(e.route);
   });
 }
 
-// ===================== ROUTE-BASED LIGHT VISIBILITY =====================
+// ===================== ROUTE PROCESSING =====================
+function handleRoute(route) {
+  showLightsForRoute(route);
+  updateETA(route);
+}
+
+// ===================== LIGHT FILTER =====================
 function showLightsForRoute(route) {
   visibleLights.forEach(l => l.hide());
   visibleLights = [];
 
-  const threshold = 0.0004;
-  const now = Date.now() / 1000;
+  const threshold = 0.0008;
 
   allTrafficLights.forEach(light => {
     const near = route.coordinates.some(pt => {
@@ -167,17 +146,28 @@ function showLightsForRoute(route) {
     if (near) {
       light.show();
       visibleLights.push(light);
-    } else {
-      light.hide();
     }
   });
-
-  console.log("Visible route lights:", visibleLights.length);
 }
 
 // ===================== ETA =====================
 function updateETA(route) {
   let eta = route.summary.totalTime;
 
-  // add expected red-light delay
-  visibleLights.forEach(light
+  visibleLights.forEach(light => {
+    if (light.state === "red") eta += light.timer;
+  });
+
+  document.getElementById("etaValue").innerText =
+    (eta / 60).toFixed(1) + " min";
+}
+
+// ===================== RESET =====================
+function resetAll() {
+  if (routingControl) map.removeControl(routingControl);
+  if (startMarker) map.removeLayer(startMarker);
+  if (endMarker) map.removeLayer(endMarker);
+
+  visibleLights.forEach(l => l.hide());
+  visibleLights = [];
+}
