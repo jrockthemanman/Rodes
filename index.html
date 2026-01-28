@@ -27,5 +27,23 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
   <script src="script.js"></script>
+  <!-- ETA Box -->
+<div id="etaBox">
+  <div class="eta-title">Estimated Time</div>
+
+  <div class="route-option">
+    <span id="route1Eta">Route 1: --</span>
+    <button onclick="activateRoute(0)">Go</button>
+  </div>
+
+  <div class="route-option">
+    <span id="route2Eta">Route 2: --</span>
+    <button onclick="activateRoute(1)">Go</button>
+  </div>
+
+  <div class="eta-current">
+    Active ETA: <span id="etaValue">--</span>
+  </div>
+</div>
 </body>
 </html>
